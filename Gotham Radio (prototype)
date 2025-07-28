@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gotham Radio - Real-Time Vigilante Simulator</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        gotham: {
+                            dark: '#0a0a0a',
+                            darker: '#050505',
+                            light: '#1a1a1a',
+                            accent: '#8B0000',
+                            text: '#e0e0e0'
+                        }
+                    },
+                    fontFamily: {
+                        'mono': ['"Courier New"', 'monospace']
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        @keyframes scanline {
+            0% { transform: translateY(-100%); }
+            100% { transform: translateY(100vh); }
+        }
+        
+        @keyframes flicker {
+            0% { opacity: 0.9; }
+            50% { opacity: 1; }
+            100% { opacity: 0.9; }
+        }
+        
+        .scanline {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 2px;
+            background: rgba(0, 255, 0, 0.1);
+            animation: scanline 8s linear infinite;
+            z-index: 999;
+        }
+        
+        .terminal {
+            background-color: #0a0a0a;
+            color: #00ff00;
+            font-family: 'Courier New', monospace;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .terminal::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%);
+            background-size: 100% 4px;
+            z-index: 1;
+            pointer-events: none;
+        }
+        
+        .glow {
+            text-shadow: 0 0 5px #00ff00, 0 0 10px #00ff00;
+        }
+        
+        .pulse {
+            animation: flicker 0.15s infinite;
+        }
+        
+        .incident-card {
+            transition: all 0.3s ease;
+            border-left: 3px solid transparent;
+        }
+        
+        .incident-card:hover {
+            border-left: 3px solid #8B0000;
+            transform: translateX(5px);
+        }
+        
+        .bat-signal {
+            animation: pulse 2s infinite;
+        }
+        
+        .timestamp {
+            color: #008800;
+        }
+        
+        .location {
+            color: #00aaff;
+        }
+        
+        .incident-type {
+            color: #ff5555;
+        }
+        
+        .scroll-gradient {
+            background: linear-gradient(to bottom, rgba(10, 10, 10, 0) 0%, rgba(10, 10, 10, 1) 100%);
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 50px;
+            pointer-events: none;
+        }
+        
+        .typewriter::after {
+            content: "|";
+            animation: blink 1s infinite;
+        }
+        
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+    </style>
+</head>
+<body class="bg-gotham-dark text-gotham-text font-mono">
+    <div class="scanline"></div>
+    
+    <div class="terminal min-h-screen p-4 md:p-8">
+        <!-- Header -->
+        <div class="flex flex-col md:flex-row justify-between items-center mb-6 md:mb-8 border-b border-green-800 pb-4">
+            <div class="flex items-center mb-4 md:mb-0">
+                <div class="bat-signal text-3xl mr-3">
+                    <i class="fas fa-broadcast-tower text-gotham-accent"></i>
+                </div>
+                <h1 class="text-2xl md:text-3xl font-bold glow">GOTHAM RADIO</h1>
+            </div>
+            
+            <div class="flex space-x-4">
+                <div class="flex items-center">
+                    <i class="fas fa-circle text-green-500 text-xs mr-2"></i>
+                    <span class="text-sm">ONLINE</span>
+                </div>
+                <div class="flex items-center">
+                    <i class="fas fa-clock mr-2"></i>
+                    <span id="current-time" class="text-sm">00:00:00</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Status Bar -->
+        <div class="bg-gotham-lighter rounded p-3 mb-6 flex flex-wrap items-center text-sm">
+            <div class="mr-6 mb-2 md:mb-0">
+                <span class="text-green-500">[CONNECTED]</span> 
+                <span class="ml-2">GOTHAM POLICE SCANNER</span>
+            </div>
+            <div class="mr-6 mb-2 md:mb-0">
+                <span class="text-yellow-500">[ACTIVE INCIDENTS]</span> 
+                <span id="incident-count" class="ml-2">0</span>
+            </div>
+            <div class="mr-6 mb-2 md:mb-0">
+                <span class="text-blue-500">[LAST UPDATE]</span> 
+                <span id="last-update" class="ml-2">00:00:00</span>
+            </div>
+            <div>
+                <span class="text-purple-500">[MODE]</span> 
+                <span class="ml-2">VIGILANTE SIMULATION</span>
+            </div>
+        </div>
+        
+        <!-- Main Content -->
+        <div class="flex flex-col lg:flex-row gap-6">
+            <!-- Incident Feed -->
+            <div class="w-full lg:w-2/3">
+                <div class="bg-gotham-light rounded-lg p-4 md:p-6 h-[500px] overflow-y-auto relative">
+                    <h2 class="text-xl font-bold mb-4 flex items-center">
+                        <i class="fas fa-rss mr-2 text-gotham-accent"></i>
+                        REAL-TIME INCIDENT FEED
+                    </h2>
+                    
+                    <div id="incident-feed" class="space-y-4">
+                        <!-- Incidents will be dynamically added here -->
+                        <div class="text-center py-10 text-gray-500">
+                            <i class="fas fa-spinner fa-spin text-2xl mb-3"></i>
+                            <p>SCANNING FOR INCIDENTS...</p>
+                        </div>
+                    </div>
+                    
+                    <div class="scroll-gradient"></div>
+                </div>
+            </div>
+            
+            <!-- Action Panel -->
+            <div class="w-full lg:w-1/3">
+                <div class="bg-gotham-light rounded-lg p-4 md:p-6 mb-6">
+                    <h2 class="text-xl font-bold mb-4 flex items-center">
+                        <i class="fas fa-user-secret mr-2 text-gotham-accent"></i>
+                        VIGILANTE COMMAND CENTER
+                    </h2>
+                    
+                    <div class="mb-6">
+                        <h3 class="font-bold mb-2 text-green-400">SELECTED INCIDENT</h3>
+                        <div id="selected-incident" class="bg-gotham-darker p-4 rounded text-sm">
+                            <p class="text-gray-400">No incident selected</p>
+                        </div>
+                    </div>
+                    
+                    <div class="mb-6">
+                        <h3 class="font-bold mb-2 text-green-400">ACTION OPTIONS</h3>
+                        <div class="grid grid-cols-2 gap-3">
+                            <button class="bg-gotham-darker hover:bg-gotham-accent transition py-3 rounded text-sm">
+                                <i class="fas fa-search mr-2"></i>INVESTIGATE
+                            </button>
+                            <button class="bg-gotham-darker hover:bg-gotham-accent transition py-3 rounded text-sm">
+                                <i class="fas fa-bullseye mr-2"></i>INTERVENE
+                            </button>
+                            <button class="bg-gotham-darker hover:bg-gotham-accent transition py-3 rounded text-sm">
+                                <i class="fas fa-shield-alt mr-2"></i>PROTECT
+                            </button>
+                            <button class="bg-gotham-darker hover:bg-gotham-accent transition py-3 rounded text-sm">
+                                <i class="fas fa-headset mr-2"></i>ALERT AUTHORITIES
+                            </button>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <h3 class="font-bold mb-2 text-green-400">BAT-SIGNAL STATUS</h3>
+                        <div class="flex items-center justify-between bg-gotham-darker p-3 rounded">
+                            <span>PROJECTOR</span>
+                            <span class="text-green-500">ACTIVE</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Stats Panel -->
+                <div class="bg-gotham-light rounded-lg p-4 md:p-6">
+                    <h2 class="text-xl font-bold mb-4 flex items-center">
+                        <i class="fas fa-chart-bar mr-2 text-gotham-accent"></i>
+                        CITY METRICS
+                    </h2>
+                    
+                    <div class="space-y-4">
+                        <div>
+                            <div class="flex justify-between mb-1">
+                                <span>CRIME LEVEL</span>
+                                <span>78%</span>
+                            </div>
+                            <div class="w-full bg-gotham-darker rounded-full h-2.5">
+                                <div class="bg-red-600 h-2.5 rounded-full" style="width: 78%"></div>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <div class="flex justify-between mb-1">
+                                <span>CIVILIAN SAFETY</span>
+                                <span>42%</span>
+                            </div>
+                            <div class="w-full bg-gotham-darker rounded-full h-2.5">
+                                <div class="bg-yellow-500 h-2.5 rounded-full" style="width: 42%"></div>
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <div class="flex justify-between mb-1">
+                                <span>POLICE RESPONSE</span>
+                                <span>65%</span>
+                            </div>
+                            <div class="w-full bg-gotham-darker rounded-full h-2.5">
+                                <div class="bg-blue-500 h-2.5 rounded-full" style="width: 65%"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-6 pt-4 border-t border-gotham-darker">
+                        <div class="flex justify-between">
+                            <span>TOTAL INCIDENTS TODAY</span>
+                            <span class="font-bold">142</span>
+                        </div>
+                        <div class="flex justify-between mt-2">
+                            <span>INTERVENTIONS</span>
+                            <span class="font-bold">28</span>
+                        </div>
+                        <div class="flex justify-between mt-2">
+                            <span>CRIMINALS APPREHENDED</span>
+                            <span class="font-bold">17</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <div class="mt-8 pt-4 border-t border-green-800 text-center text-sm text-gray-500">
+            <p>GOTHAM RADIO TERMINAL v2.1.7 | SIMULATED INCIDENTS | NOT MONITORED BY AUTHORITIES</p>
+            <p class="mt-2">WARNING: DO NOT ATTEMPT REAL-WORLD VIGILANTISM. THIS IS FOR ENTERTAINMENT PURPOSES ONLY.</p>
+        </div>
+    </div>
+
+    <script>
+        // Sample incident data
+        const incidentTypes = [
+            { type: "BREAK-IN", icon: "fas fa-door-open", color: "text-yellow-400" },
+            { type: "ASSAULT", icon: "fas fa-fist-raised", color: "text-red-500" },
+            { type: "ROBBERY", icon: "fas fa-mask", color: "text-orange-500" },
+            { type: "SUSPICIOUS ACTIVITY", icon: "fas fa-user-secret", color: "text-purple-400" },
+            { type: "DOMESTIC DISTURBANCE", icon: "fas fa-home", color: "text-blue-400" },
+            { type: "TRAFFIC INCIDENT", icon: "fas fa-car-crash", color: "text-gray-400" },
+            { type: "MISSING PERSON", icon: "fas fa-question-circle", color: "text-cyan-400" },
+            { type: "FIRE", icon: "fas fa-fire", color: "text-red-600" }
+        ];
+        
+        const locations = [
+            "GOTHAM FINANCIAL DISTRICT",
+            "CRIME ALLEY",
+            "ARKHAM ASYLUM",
+            "WAYNE TOWER",
+            "BLEECKER STREET",
+            "ACE CHEMICALS",
+            "GOTHAM UNIVERSITY",
+            "ROBBINSON PARK",
+            "GOTHAM DOCKS",
+            "UPPER EAST SIDE",
+            "NARROWS DISTRICT",
+            "SIONIS INDUSTRIES",
+            "GOTHAM GENERAL HOSPITAL",
+            "CLOCKTOWER TERRACE"
+        ];
+        
+        const incidentDescriptions = [
+            "Shots fired near Gotham Financial District. Multiple casualties reported.",
+            "Suspicious vehicle observed circling Robinson Park for 30 minutes.",
+            "Burglary in progress at Wayne Tower. Security systems disabled.",
+            "Domestic disturbance call at 1247 Bleeker Street. Loud argument heard.",
+            "Unidentified flying object spotted over Arkham Asylum. No immediate threat.",
+            "Fire reported at Ace Chemicals. Possible hazardous materials involved.",
+            "Missing person report filed. Last seen near Crime Alley.",
+            "Suspicious package found at Gotham General Hospital. Bomb squad dispatched.",
+            "Multiple vehicles abandoned on Gotham Bridge. Cause unknown."
+        ];
+        
+        let incidents = [];
+        let selectedIncident = null;
+        let incidentCount = 0;
+        
+        // Update time display
+        function updateTime() {
+            const now = new Date();
+            const timeString = now.toTimeString().split(' ')[0];
+            document.getElementById('current-time').textContent = timeString;
+            document.getElementById('last-update').textContent = timeString;
+        }
+        
+        // Generate a random incident
+        function generateIncident() {
+            const type = incidentTypes[Math.floor(Math.random() * incidentTypes.length)];
+            const location = locations[Math.floor(Math.random() * locations.length)];
+            const description = incidentDescriptions[Math.floor(Math.random() * incidentDescriptions.length)];
+            
+            const now = new Date();
+            const timeString = now.toTimeString().split(' ')[0];
+            
+            return {
+                id: Date.now(),
+                type: type,
+                location: location,
+                description: description,
+                time: timeString,
+                priority: Math.floor(Math.random() * 3) + 1 // 1-3 priority levels
+            };
+        }
+        
+        // Add incident to feed
+        function addIncidentToFeed(incident) {
+            const feed = document.getElementById('incident-feed');
+            
+            // Remove initial message if present
+            if (feed.children.length === 1 && feed.children[0].classList.contains('text-center')) {
+                feed.innerHTML = '';
+            }
+            
+            const priorityClass = incident.priority === 1 ? 'border-red-500' : 
+                                incident.priority === 2 ? 'border-yellow-500' : 'border-green-500';
+            
+            const incidentElement = document.createElement('div');
+            incidentElement.className = `incident-card bg-gotham-darker p-4 rounded cursor-pointer border-l-4 ${priorityClass}`;
+            incidentElement.innerHTML = `
+                <div class="flex justify-between items-start">
+                    <div>
+                        <div class="flex items-center mb-1">
+                            <i class="${incident.type.icon} mr-2 ${incident.type.color}"></i>
+                            <span class="incident-type font-bold">${incident.type.type}</span>
+                        </div>
+                        <div class="location text-sm mb-2">${incident.location}</div>
+                        <p class="text-sm">${incident.description}</p>
+                    </div>
+                    <div class="timestamp text-xs">${incident.time}</div>
+                </div>
+            `;
+            
+            incidentElement.addEventListener('click', () => {
+                selectIncident(incident);
+            });
+            
+            // Add to top of feed
+            feed.insertBefore(incidentElement, feed.firstChild);
+            
+            // Update incident count
+            incidentCount++;
+            document.getElementById('incident-count').textContent = incidentCount;
+            
+            // Auto-scroll to top
+            feed.scrollTop = 0;
+        }
+        
+        // Select an incident for action
+        function selectIncident(incident) {
+            selectedIncident = incident;
+            const selectedElement = document.getElementById('selected-incident');
+            selectedElement.innerHTML = `
+                <div class="flex items-center mb-2">
+                    <i class="${incident.type.icon} mr-2 ${incident.type.color}"></i>
+                    <span class="font-bold">${incident.type.type}</span>
+                </div>
+                <div class="text-sm mb-2">${incident.location}</div>
+                <p class="text-sm">${incident.description}</p>
+                <div class="text-xs mt-3 text-gray-400">Reported at ${incident.time}</div>
+            `;
+            
+            // Highlight selected incident in feed
+            document.querySelectorAll('.incident-card').forEach(card => {
+                card.classList.remove('bg-gotham-dark');
+            });
+            event.currentTarget.classList.add('bg-gotham-dark');
+        }
+        
+        // Initialize the terminal
+        function initTerminal() {
+            updateTime();
+            setInterval(updateTime, 1000);
+            
+            // Generate initial incidents
+            for (let i = 0; i < 5; i++) {
+                setTimeout(() => {
+                    const incident = generateIncident();
+                    incidents.push(incident);
+                    addIncidentToFeed(incident);
+                }, i * 800);
+            }
+            
+            // Generate new incidents periodically
+            setInterval(() => {
+                const incident = generateIncident();
+                incidents.push(incident);
+                addIncidentToFeed(incident);
+                
+                // Limit to 20 incidents in memory
+                if (incidents.length > 20) {
+                    incidents.shift();
+                }
+            }, 8000);
+        }
+        
+        // Initialize when page loads
+        document.addEventListener('DOMContentLoaded', initTerminal);
+    </script>
+</body>
+</html>
